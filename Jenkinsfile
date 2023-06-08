@@ -1,28 +1,38 @@
 pipeline {
   agent {
-      label 'cloud-platform-cloud-utils'
+    label 'cloud-platform-cloud-utils'
+  }
+  parameters {
+    string(name: "REGISTRY_NAME", defaultValue: "")
+    string(name: "DOCKER_IMAGE", defaultValue: "")
+    string(name: "VERSION", defaultValue: "")
   }
   stages {
     stage('Build') {
       steps {
-        //Build docker image
         //sh 'docker build -t sample/web-app:latest .'
-        echo "Docker is pulling down ${DOCKER_IMAGE} with version: ${VERSION}."
-        sh "docker pull ${DOCKER_IMAGE}:${VERSION}"
+        echo "Docker is building image: ${DOCKER_IMAGE}."
       }
     }
     stage('Scan') {
       steps {
-        // Install trivy
-        // sh "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.18.3"
         sh "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- v0.42.0"
         sh "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl > html.tpl"
-        sh "./bin/trivy --version"
-        
-        echo "Trivy is scanning image: ${DOCKER_IMAGE} for vulnerabilities."
-        sh "ls -al"
-        sh "./bin/trivy image --format template --template \'@html.tpl\' -o cve_report.html --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${VERSION}"
-        sh "ls -al"
+
+        script {
+          def formatOption = "--format template --template \'@html.tpl\'"
+          def imageName = null
+          if (params.REGISTRY_NAME == '') {
+            imageName = "$DOCKER_IMAGE:$VERSION"
+          } else {
+            imageName = "$REGISTRY_NAME/$DOCKER_IMAGE:$VERSION"
+          }
+          echo "Trivy is scanning image: ${DOCKER_IMAGE} for vulnerabilities."
+          sh "ls -al"
+          sh "./bin/trivy image $imageName $formatOption -o cve_report.html"
+          sh "ls -al"
+        }
+
         
         publishHTML(target: [
           allowMissing: false,
