@@ -8,6 +8,9 @@ pipeline {
     string(name: "VERSION", defaultValue: "")
     string(name: "SEVERITY", defaultValue: "critical")
   }
+  environment {
+    BUILD_NUMBER = "${env.BUILD_NUMBER}"
+}
   stages {
     stage('Build') {
       steps {
@@ -24,8 +27,12 @@ pipeline {
             def format = "--format template --template \'@html.tpl\'"
             def imageName = null
             def sev = "${SEVERITY}".toUpperCase()
+            // def channel = "#appsbroker-alerts"
             // def slackWebhook = env.appsbroker-slack-webhook
             env.SLACK_WEBHOOK = ''
+            
+
+            
           
             if (params.REGISTRY_NAME == '') {
                 imageName = "$DOCKER_IMAGE:$VERSION"
@@ -46,19 +53,45 @@ pipeline {
             ])
         
             // sh "./bin/trivy image --exit-code 1 --severity $sev $imageName"
-        
+            
+            // def exitCode = shell "./bin/trivy image --exit-code 1 --severity $sev $imageName", returnStatus:true
+            def trivyCommand = "./bin/trivy image --exit-code 1 --severity HIGH,CRITICAL ${imageName}"
+            def trivyOutput = sh(returnStatus: true, script: trivyCommand)
+            
+            if (trivyOutput != 0) {
+                def buildUrl = env.BUILD_URL
+                
+                def slackMessage = """
+            {
+                "text": "High or critical vulnerabilities found by Trivy scan for ${imageName}!",
+                "channel": "#appsbroker-alerts",
+                "attachments": [
+                    {
+                        "title": "Trivy Output Report",
+                        "text": "${buildUrl}"
+                    }
+                ]
+            }
+            """
+
+
+
             withCredentials([string(credentialsId: 'appsbroker-slack-webhook', variable: 'SLACK_WEBHOOK')]) {
                 script {
+                
                     sh """
-                        curl -XPOST -H 'Content-type: application/json' --data '{
-                            \"text\": \"Hello from Jenkins!\",
-                            \"channel\": \"#appsbroker-alerts\"
-                        }' \${SLACK_WEBHOOK}
+                        curl -X POST \
+                        -H 'Content-type: application/json' \
+                        --data '${slackMessage}' \
+                        \${SLACK_WEBHOOK}
                     """
-                }
+                } 
             }
+            
+            
+
         }
-        
+        }
       }
       
     }
