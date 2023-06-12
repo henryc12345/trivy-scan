@@ -3,19 +3,20 @@ pipeline {
     label 'cloud-platform-cloud-utils'
   }
   parameters {
-    string(name: "REGISTRY_NAME", defaultValue: "")
-    string(name: "DOCKER_IMAGE", defaultValue: "")
-    string(name: "VERSION", defaultValue: "")
-    string(name: "SEVERITY", defaultValue: "critical")
+    string(name: "DOCKER_IMAGE", defaultValue: "", description: 'Name of Docker image.')
+    string(name: "VERSION", defaultValue: "", description: 'Version or tag of docker image.')
+    string(name: "SEVERITY", defaultValue: "critical", description: 'Severity level of scanned image to be alerted.')
+    string(name: "JENKINS_URL", defaultValue: "https://green-1-odin.quantexa.com/jenkins/", description: 'Jenkins URL.')
   }
   environment {
-    BUILD_NUMBER = "${env.BUILD_NUMBER}"
+    DOCKER_IMAGE_WITH_VERSION = "$DOCKER_IMAGE:$VERSION"
+    BUILD_URL = "${env.BUILD_URL}"
 }
   stages {
     stage('Build') {
       steps {
-        //sh 'docker build -t sample/web-app:latest .'
-        echo "Docker is building image: ${DOCKER_IMAGE}."
+        //sh 'docker build -t $DOCKER_IMAGE:$VERSION .'
+        echo "Docker is building image: $DOCKER_IMAGE_WITH_VERSION."
       }
     }
     stage('Scan') {
@@ -24,25 +25,15 @@ pipeline {
         sh "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl > html.tpl"
 
         script {
-            def format = "--format template --template \'@html.tpl\'"
-            def imageName = null
+            //def format = "--format template --template \'@html.tpl\'"
             def sev = "${SEVERITY}".toUpperCase()
-            // def channel = "#appsbroker-alerts"
-            // def slackWebhook = env.appsbroker-slack-webhook
             env.SLACK_WEBHOOK = ''
+            def updatedBuildUrl = BUILD_URL.replaceFirst('https://green-1-core-services.quantexa.com/jenkins/', "$JENKINS_URL")
             
-
+            echo "Trivy is scanning and generating report for image: ${DOCKER_IMAGE_WITH_VERSION} for vulnerabilities."
+            sh "./bin/trivy image $DOCKER_IMAGE_WITH_VERSION --format template --template \'@html.tpl\' -o cve_report.html"
+          
             
-          
-            if (params.REGISTRY_NAME == '') {
-                imageName = "$DOCKER_IMAGE:$VERSION"
-            } else {
-                imageName = "$REGISTRY_NAME/$DOCKER_IMAGE:$VERSION"
-            }
-            echo "severity level input: $sev"
-            echo "Trivy is scanning image: ${DOCKER_IMAGE} for vulnerabilities."
-            sh "./bin/trivy image $imageName $format -o cve_report.html"
-          
             publishHTML(target: [
                 allowMissing: false,
                 alwaysLinkToLastBuild: false,
@@ -52,28 +43,29 @@ pipeline {
                 reportName: "Trivy Report",
             ])
         
-            // sh "./bin/trivy image --exit-code 1 --severity $sev $imageName"
             
-            // def exitCode = shell "./bin/trivy image --exit-code 1 --severity $sev $imageName", returnStatus:true
-            def trivyCommand = "./bin/trivy image --exit-code 1 --severity HIGH,CRITICAL ${imageName}"
+            def trivyCommand = "./bin/trivy image --exit-code 1 --severity ${sev} ${DOCKER_IMAGE_WITH_VERSION}"
             def trivyOutput = sh(returnStatus: true, script: trivyCommand)
             
             if (trivyOutput != 0) {
-                def buildUrl = env.BUILD_URL
+
                 
                 def slackMessage = """
             {
-                "text": "High or critical vulnerabilities found by Trivy scan for ${imageName}!",
+                "text": "High or critical vulnerabilities found by Trivy scan for ${DOCKER_IMAGE_WITH_VERSION}!",
                 "channel": "#appsbroker-alerts",
                 "attachments": [
                     {
                         "title": "Trivy Output Report",
-                        "text": "${buildUrl}"
+                        "text": "${updatedBuildUrl}"
                     }
                 ]
             }
             """
-
+            
+            
+            echo "Updated Build URL: ${updatedBuildUrl}"
+            
 
 
             withCredentials([string(credentialsId: 'appsbroker-slack-webhook', variable: 'SLACK_WEBHOOK')]) {
@@ -88,6 +80,8 @@ pipeline {
                 } 
             }
             
+            // Fail pipeline if severity specified is found in image.
+            sh "$trivyCommand"
             
 
         }
