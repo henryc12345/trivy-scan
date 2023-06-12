@@ -5,8 +5,9 @@ def shell(cmd) {
 def runTrivyScan(String dockerImage, String version, String severity, String jenkinsUrl) {
   def dockerImageFull = "$dockerImage:$version"
   def severityUpperCase = "${severity}".toUpperCase()
+  def BUILD_URL = "${env.BUILD_URL}"
   env.SLACK_WEBHOOK = ''
-  def updatedBuildUrl = BUILD_URL.replaceFirst('https://green-1-core-services.quantexa.com/jenkins/', "$JENKINS_URL")
+  def updatedBuildUrl = BUILD_URL.replaceFirst('https://green-1-core-services.quantexa.com/jenkins/', "$jenkinsUrl")
   def trivyCommand = "./bin/trivy image --exit-code 1 --severity ${severityUpperCase} ${dockerImageFull}"
   def trivyOutput = sh(returnStatus: true, script: trivyCommand)
   
