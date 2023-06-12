@@ -8,7 +8,7 @@ def runTrivyScan(String dockerImage, String version, String severity, String jen
   env.SLACK_WEBHOOK = ''
   def updatedBuildUrl = BUILD_URL.replaceFirst('https://green-1-core-services.quantexa.com/jenkins/', "$JENKINS_URL")
   def trivyCommand = "./bin/trivy image --exit-code 1 --severity ${severityUpperCase} ${dockerImageFull}"
-  def trivyOutput = sh(returnStatus: true, script: trivyCommand) //need to change the command
+  def trivyOutput = sh(returnStatus: true, script: trivyCommand)
   
   // Install Trivy and HTML template
   shell "curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- v0.42.0"
